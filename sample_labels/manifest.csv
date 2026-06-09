@@ -1,0 +1,8 @@
+file,brand,class_type,alcohol,net,warning_bold
+old-tom-pass.txt,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,"45% Alc./Vol. (90 Proof)",750 mL,yes
+case-only-brand.txt,Stone's Throw,American Single Malt Whiskey,86 Proof,75 cl,yes
+title-case-warning.txt,RIVERBEND GIN CO,London Dry Gin,47%,700 mL,yes
+wrong-abv.txt,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,"45% Alc./Vol. (90 Proof)",750 mL,yes
+reworded-warning.txt,HARBOR LIGHT RUM,Caribbean Rum,40%,1000 mL,yes
+missing-warning.txt,PRAIRIE OAK VODKA,Vodka,40%,750 mL,yes
+old-tom-pass.txt,OLD TOM DISTILLERY,,,,unknown
