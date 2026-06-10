@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ttb_verify.py 3.1.2 (2026-06-09) — offline TTB label pre-check, single file, stdlib only.
+"""ttb_verify.py 3.2.0 (2026-06-09) — offline TTB label pre-check, single file, stdlib only.
 
 Compares filed COLA application data against the transcribed text of a label.
 The transcription (from the paper label, a photo, or any OCR of the operator's
@@ -22,7 +22,7 @@ from difflib import SequenceMatcher
 from enum import StrEnum
 from pathlib import Path
 
-VERSION = "3.1.2"
+VERSION = "3.2.0"
 
 # 27 CFR Part 16 — wording is statutory and must appear verbatim.
 REQUIRED_WARNING_PREFIX = "GOVERNMENT WARNING:"

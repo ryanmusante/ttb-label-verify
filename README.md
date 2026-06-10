@@ -2,12 +2,13 @@
 
 Offline pre-check for TTB COLA label review: compares filed application data against the transcribed text of a label and renders a tiered, auditable verdict. One file, Python standard library only — no packages, no system tools, no network, no server, no keys.
 
-Version 3.1.2 (2026-06-09).
+Version 3.2.0 (2026-06-09).
 
 ## Contents
 
 - [Setup](#setup)
 - [Run](#run)
+- [Web prototype and publishing](#web-prototype-and-publishing)
 - [Approach](#approach)
 - [Tools used](#tools-used)
 - [Test labels](#test-labels)
@@ -55,6 +56,46 @@ python3 ttb_verify.py --help
 Exit codes: `0` PASS, `1` FAIL, `2` usage/input error, `3` NEEDS_REVIEW. In batch mode the worst row wins: any ERROR/FAIL → 1, else any NEEDS_REVIEW → 3, else 0. Results go to stdout, diagnostics to stderr; color only on a TTY and `NO_COLOR` is respected.
 
 Manifest columns: `file`, `brand` (required); `class_type`, `alcohol`, `net`, `warning_bold` (yes/no/unknown, case-insensitive) optional. Label paths are relative to the manifest. A bad row (missing file, blank brand, invalid flag) becomes a per-row ERROR instead of sinking the batch.
+
+## Web prototype and publishing
+
+`index.html` is a thin browser shell around the unmodified `ttb_verify.py`: it loads
+the Pyodide runtime (CPython compiled to WebAssembly, pinned to 314.0.0 / Python 3.14)
+from the jsDelivr CDN, executes this repository's Python file as-is, and calls
+`verify()` directly. One rules engine, two front ends — the CLI and the page can
+never disagree. Label text never leaves the browser tab; nothing is uploaded or
+stored, and the page works offline once loaded. First visit downloads the runtime
+(roughly 10 MB, cached afterward); each verdict after that is instant. The sample
+buttons load the fixtures from `sample_labels/`, and the footer button runs the
+same 60-assertion self-test in the browser.
+
+Run it locally (any static file server works; opening the file directly will not,
+because browsers block `fetch` on `file://`):
+
+```
+python3 -m http.server 8000
+# then open http://localhost:8000/
+```
+
+Publish both deliverable URLs from this folder (requires a GitHub account and
+`git`; `gh` is the GitHub CLI):
+
+```
+git init && git add -A && git commit -m "feat: TTB label verify v3.2.0"
+gh repo create ttb-label-verify --public --source=. --push
+git tag -a v3.2.0 -m "v3.2.0" && git push --tags
+```
+
+Then in the repository: Settings → Pages → Deploy from a branch → `main`, `/ (root)`.
+After that:
+
+- Source code repository: `https://github.com/<your-username>/ttb-label-verify`
+- Deployed application:   `https://<your-username>.github.io/ttb-label-verify/`
+
+Any static host (Vercel, Netlify, an internal IIS box) serves the same folder
+unchanged — there is no build step and no server-side code. If the host or a
+firewall cannot reach the jsDelivr CDN, download a Pyodide release into the
+repository and point `PYODIDE_VERSION`'s URL in `index.html` at the local copy.
 
 ## Approach
 
@@ -135,8 +176,11 @@ How the spec's two deliverables are satisfied by this archive:
 ╠══════════════════════════════╬══════════════════════════════╣
 ║ Source code repository —     ║ this archive is the repo     ║
 ║ all source code              ║ content, git-init-ready:     ║
-║                              ║ ttb_verify.py (entire app)   ║
-║                              ║ + sample_labels/ fixtures    ║
+║                              ║ ttb_verify.py (rules engine) ║
+║                              ║ + index.html (web shell)     ║
+║                              ║ + sample_labels/ fixtures;   ║
+║                              ║ publish commands in Web      ║
+║                              ║ prototype and publishing     ║
 ╠══════════════════════════════╬══════════════════════════════╣
 ║ README: setup and run        ║ Setup, Run                   ║
 ║ instructions                 ║                              ║
@@ -144,9 +188,10 @@ How the spec's two deliverables are satisfied by this archive:
 ║ README: approach, tools      ║ Approach; Tools used;        ║
 ║ used, assumptions made       ║ Assumptions                  ║
 ╠══════════════════════════════╬══════════════════════════════╣
-║ Deployed application URL     ║ intentionally out of scope;  ║
-║                              ║ rationale in Trade-offs and  ║
-║                              ║ limitations                  ║
+║ Deployed application URL     ║ index.html — static page     ║
+║                              ║ running the same Python      ║
+║                              ║ file; publish steps in Web   ║
+║                              ║ prototype and publishing     ║
 ╚══════════════════════════════╩══════════════════════════════╝
 ```
 
@@ -156,9 +201,18 @@ Application data is entered via flags or manifest CSV — no COLA integration in
 
 ## Trade-offs and limitations
 
-This prototype was deliberately reduced to a single dependency-free file: no web server, no packaging, no image pipeline. Consequences, stated plainly: the spec's **deployed-URL deliverable is intentionally out of scope** — there is nothing to host; the runnable artifact is the file itself (`--self-test` is the acceptance check). **Bold detection is operator-attested**, not measured, because text cannot carry type weight; the conservative default (`unknown` → NEEDS_REVIEW) means it can never silently pass. **Image handling (angles, glare — Park's stretch goal) is out of scope**: any OCR step happens before this tool, and bad transcription shows up as NOT_FOUND/NEEDS_REVIEW rather than being silently mis-verified. The 0.55 locator floor and 0.85 fuzzy-review threshold are sensible defaults, untuned against real COLA data. Verdicts assist agents and do not replace agent judgment.
+This prototype was deliberately reduced to a dependency-free rules engine in a single Python file plus one static page: no web server, no packaging, no image pipeline. Consequences, stated plainly: the spec's **deployed-URL deliverable is met by a static page** (`index.html`) that runs the same `ttb_verify.py` in the browser via Pyodide — no server-side code, so the only hosting requirement is a static file host; `--self-test` remains the acceptance check on both front ends. The page's single external dependency is the Pyodide CDN at first load (self-hostable, as noted above). **Bold detection is operator-attested**, not measured, because text cannot carry type weight; the conservative default (`unknown` → NEEDS_REVIEW) means it can never silently pass. **Image handling (angles, glare — Park's stretch goal) is out of scope**: any OCR step happens before this tool, and bad transcription shows up as NOT_FOUND/NEEDS_REVIEW rather than being silently mis-verified. The 0.55 locator floor and 0.85 fuzzy-review threshold are sensible defaults, untuned against real COLA data. Verdicts assist agents and do not replace agent judgment.
 
 ## Changelog
+
+3.2.0 (2026-06-09)
+  - index.html: browser prototype satisfying the deployed-URL deliverable —
+    loads the unmodified ttb_verify.py under Pyodide (pinned 314.0.0,
+    CPython 3.14) and calls verify() in-tab; sample-label loader buttons;
+    in-browser 60-assertion self-test; no data leaves the page.
+  - README: Web prototype and publishing section with local-serve and
+    GitHub/Pages publish commands; Deliverables and Trade-offs updated —
+    deployed URL is now in scope.
 
 3.1.2 (2026-06-09)
   - README: Deliverables section mapping the spec's deliverables to the

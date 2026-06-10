@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TTB Label Verify — browser prototype</title>
+<style>
+  /* ttb-label-verify 3.2.0 — ledger-at-night palette, verdict rendered as a rubber stamp */
+  :root {
+    --bg: #14171c; --panel: #1c2027; --line: #2c323c;
+    --text: #e8e4da; --muted: #9a958a; --accent: #6f9bc4;
+    --pass: #4f9e6b; --review: #d8a03c; --fail: #cf5347;
+    --serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 15px; line-height: 1.5; }
+  a { color: var(--accent); }
+  header { border-bottom: 1px solid var(--line); padding: 28px 24px 20px; }
+  header h1 { font-family: var(--serif); font-weight: 600; font-size: 26px; margin: 0 0 4px; letter-spacing: 0.02em; }
+  header p { margin: 0; color: var(--muted); max-width: 70ch; }
+  main { display: grid; grid-template-columns: minmax(320px, 460px) 1fr; gap: 24px; padding: 24px; max-width: 1200px; }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.14em; color: var(--muted); text-transform: uppercase; margin: 0 0 12px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], textarea {
+    width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 8px 10px; font-family: var(--mono); font-size: 13px;
+  }
+  textarea { min-height: 180px; resize: vertical; }
+  input:focus-visible, textarea:focus-visible, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  fieldset { border: 1px solid var(--line); border-radius: 4px; margin: 14px 0 0; padding: 8px 12px 10px; }
+  legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+  fieldset label { display: inline-flex; gap: 6px; align-items: center; margin: 0 14px 0 0; font-size: 13px; color: var(--text); }
+  .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-family: var(--ui); font-size: 14px; padding: 9px 16px; border-radius: 4px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #10131a; font-weight: 600; }
+  button:disabled { opacity: 0.45; cursor: wait; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chips button { font-size: 12px; padding: 5px 10px; color: var(--muted); }
+  .chips button:hover { color: var(--text); border-color: var(--muted); }
+  #status { font-size: 13px; color: var(--muted); margin-top: 14px; min-height: 1.2em; }
+  #status.error { color: var(--fail); }
+
+  /* Signature element: the verdict stamp */
+  #stamp {
+    display: none; font-family: var(--serif); text-transform: uppercase; letter-spacing: 0.22em;
+    font-size: 30px; font-weight: 700; padding: 14px 26px; margin: 4px 0 18px;
+    border: 3px double currentColor; border-radius: 4px; width: max-content; max-width: 100%;
+    transform: rotate(-2deg);
+  }
+  #stamp.show { display: block; animation: settle 150ms ease-out; }
+  @keyframes settle { from { transform: rotate(-2deg) scale(1.12); opacity: 0.4; } to { transform: rotate(-2deg) scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { #stamp.show { animation: none; } }
+  .v-PASS { color: var(--pass); } .v-NEEDS_REVIEW { color: var(--review); } .v-FAIL { color: var(--fail); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; font-family: var(--mono); font-size: 12.5px; }
+  td.status { white-space: nowrap; font-weight: 700; }
+  td .note { display: block; color: var(--muted); font-family: var(--ui); font-size: 12px; margin-top: 3px; }
+  .s-MATCH, .s-MATCH_WITH_NOTE { color: var(--pass); }
+  .s-NEEDS_REVIEW { color: var(--review); }
+  .s-MISMATCH, .s-NOT_FOUND { color: var(--fail); }
+  footer { padding: 10px 24px 32px; color: var(--muted); font-size: 13px; }
+  footer code, #selftest-out { font-family: var(--mono); }
+  #selftest-out { display: block; margin-top: 8px; white-space: pre-wrap; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TTB Label Verify</h1>
+  <p>Compares filed application data against the transcribed text of a label and stamps a tiered,
+  auditable verdict. This page runs the exact same <code>ttb_verify.py</code> as the command line,
+  inside your browser — nothing you type leaves this page.</p>
+</header>
+
+<main>
+  <section class="panel" aria-labelledby="filed-h">
+    <p class="eyebrow" id="filed-h">As filed in the application</p>
+    <label for="brand">Brand name (required)</label>
+    <input type="text" id="brand" autocomplete="off">
+    <label for="class_type">Class / type designation</label>
+    <input type="text" id="class_type" autocomplete="off">
+    <label for="alcohol">Alcohol content (% or proof)</label>
+    <input type="text" id="alcohol" autocomplete="off">
+    <label for="net">Net contents</label>
+    <input type="text" id="net" autocomplete="off">
+    <fieldset>
+      <legend>GOVERNMENT WARNING header printed in bold?</legend>
+      <label><input type="radio" name="bold" value="yes"> Yes</label>
+      <label><input type="radio" name="bold" value="no"> No</label>
+      <label><input type="radio" name="bold" value="unknown" checked> Unknown</label>
+    </fieldset>
+
+    <label for="label_text">As printed on the label (transcribed text)</label>
+    <textarea id="label_text" spellcheck="false"></textarea>
+    <div class="chips" id="chips" aria-label="Load a sample label"></div>
+
+    <div class="actions">
+      <button class="primary" id="check" disabled>Check label</button>
+      <button id="clear">Clear</button>
+    </div>
+    <p id="status">Loading the Python runtime…</p>
+  </section>
+
+  <section class="panel" aria-live="polite" aria-labelledby="verdict-h">
+    <p class="eyebrow" id="verdict-h">Verdict</p>
+    <div id="stamp"></div>
+    <table id="fields" hidden>
+      <thead><tr><th>Field</th><th>Status</th><th>Found on label</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p id="placeholder" style="color: var(--muted)">Fill in the application data, paste the label
+    text (or load a sample), then choose “Check label”.</p>
+  </section>
+</main>
+
+<footer>
+  Prototype: verdicts assist agents and do not replace agent judgment.
+  <button id="selftest">Run the 60-assertion self-test</button>
+  <span id="selftest-out"></span>
+</footer>
+
+<script type="module">
+const PYODIDE_VERSION = "314.0.0";
+const $ = (id) => document.getElementById(id);
+const status = (msg, isError = false) => {
+  $("status").textContent = msg;
+  $("status").classList.toggle("error", isError);
+};
+
+const SAMPLES = {
+  "old-tom-pass": { brand: "OLD TOM DISTILLERY", class_type: "Kentucky Straight Bourbon Whiskey",
+                    alcohol: "45% Alc./Vol. (90 Proof)", net: "750 mL", bold: "yes" },
+  "case-only-brand": { brand: "Stone's Throw", class_type: "American Single Malt Whiskey",
+                       alcohol: "86 Proof", net: "75 cl", bold: "yes" },
+  "title-case-warning": { brand: "RIVERBEND GIN CO", class_type: "London Dry Gin",
+                          alcohol: "47%", net: "700 mL", bold: "yes" },
+  "wrong-abv": { brand: "OLD TOM DISTILLERY", class_type: "Kentucky Straight Bourbon Whiskey",
+                 alcohol: "45% Alc./Vol. (90 Proof)", net: "750 mL", bold: "yes" },
+  "reworded-warning": { brand: "HARBOR LIGHT RUM", class_type: "Caribbean Rum",
+                        alcohol: "40%", net: "1000 mL", bold: "yes" },
+  "missing-warning": { brand: "PRAIRIE OAK VODKA", class_type: "Vodka",
+                       alcohol: "40%", net: "750 mL", bold: "yes" },
+};
+
+let webVerify = null, webSelfTest = null;
+
+async function boot() {
+  try {
+    const [{ loadPyodide }, srcResp] = await Promise.all([
+      import(`https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/pyodide.mjs`),
+      fetch("./ttb_verify.py"),
+    ]);
+    if (!srcResp.ok) throw new Error(`ttb_verify.py: HTTP ${srcResp.status}`);
+    const py = await loadPyodide({ indexURL: `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/` });
+    py.globals.set("SRC", await srcResp.text());
+    py.runPython(`
+import types, sys, json
+_m = types.ModuleType("ttb_verify")
+exec(compile(SRC, "ttb_verify.py", "exec"), _m.__dict__)
+sys.modules["ttb_verify"] = _m
+from ttb_verify import Application, verify, _self_test, VERSION
+
+def web_verify(payload_json):
+    d = json.loads(payload_json)
+    app = Application(d.get("brand", "").strip(), d.get("class_type", "").strip(),
+                      d.get("alcohol", "").strip(), d.get("net", "").strip())
+    bold = {"yes": True, "no": False, "unknown": None}[d.get("warning_bold", "unknown")]
+    overall, results = verify(app, d.get("label_text", ""), bold)
+    return json.dumps({"overall": overall, "fields": [vars(r) for r in results]})
+
+def web_self_test():
+    import io, contextlib
+    out, err = io.StringIO(), io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        code = _self_test()
+    return json.dumps({"exit": code, "stdout": out.getvalue(), "stderr": err.getvalue()})
+`);
+    webVerify = py.globals.get("web_verify");
+    webSelfTest = py.globals.get("web_self_test");
+    $("check").disabled = false;
+    status(`Ready — ttb_verify.py ${py.runPython("VERSION")} on Python ${py.runPython("sys.version.split()[0]")}, running locally in this tab.`);
+  } catch (err) {
+    status(`Could not start: ${err.message}. Serve this folder over http(s) — e.g. \`python3 -m http.server\` — and check that the Pyodide CDN is reachable.`, true);
+  }
+}
+
+function renderVerdict(payload) {
+  const stamp = $("stamp");
+  stamp.textContent = payload.overall.replace("_", " ");
+  stamp.className = `show v-${payload.overall}`;
+  const tbody = $("fields").querySelector("tbody");
+  tbody.replaceChildren();
+  for (const f of payload.fields) {
+    const tr = document.createElement("tr");
+    const td = (cls, text) => { const c = document.createElement("td"); if (cls) c.className = cls; c.textContent = text; return c; };
+    tr.append(td("", f.field), td(`status s-${f.status}`, f.status), td("", f.found || "—"));
+    if (f.note) {
+      const note = document.createElement("span");
+      note.className = "note"; note.textContent = f.note;
+      tr.lastChild.append(note);
+    }
+    tbody.append(tr);
+  }
+  $("fields").hidden = false;
+  $("placeholder").hidden = true;
+}
+
+$("check").addEventListener("click", () => {
+  if (!$("brand").value.trim()) { status("Brand name is required — it is the one field every label must carry.", true); return; }
+  const payload = JSON.parse(webVerify(JSON.stringify({
+    brand: $("brand").value, class_type: $("class_type").value, alcohol: $("alcohol").value,
+    net: $("net").value, warning_bold: document.querySelector("input[name=bold]:checked").value,
+    label_text: $("label_text").value,
+  })));
+  renderVerdict(payload);
+  status("");
+});
+
+$("clear").addEventListener("click", () => {
+  for (const id of ["brand", "class_type", "alcohol", "net", "label_text"]) $(id).value = "";
+  document.querySelector("input[name=bold][value=unknown]").checked = true;
+  $("stamp").className = ""; $("fields").hidden = true; $("placeholder").hidden = false;
+  status("");
+});
+
+$("selftest").addEventListener("click", () => {
+  if (!webSelfTest) return;
+  const r = JSON.parse(webSelfTest());
+  $("selftest-out").textContent = (r.stdout + r.stderr).trim() + ` (exit ${r.exit})`;
+});
+
+for (const name of Object.keys(SAMPLES)) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = name;
+  b.addEventListener("click", async () => {
+    try {
+      const resp = await fetch(`./sample_labels/${name}.txt`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      $("label_text").value = await resp.text();
+      const s = SAMPLES[name];
+      $("brand").value = s.brand; $("class_type").value = s.class_type;
+      $("alcohol").value = s.alcohol; $("net").value = s.net;
+      document.querySelector(`input[name=bold][value=${s.bold}]`).checked = true;
+      status(`Loaded sample_labels/${name}.txt — choose “Check label”.`);
+    } catch (err) {
+      status(`Could not load sample_labels/${name}.txt (${err.message}).`, true);
+    }
+  });
+  $("chips").append(b);
+}
+
+boot();
+</script>
+</body>
+</html>
